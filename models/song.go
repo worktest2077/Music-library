@@ -3,7 +3,7 @@ package models
 type Song struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	Group       string `json:"group" binding:"required"`
-	Name        string `json:"song" binding:"required"`
+	Name        string `json:"name" binding:"required"`
 	ReleaseDate string `json:"releaseDate"`
 	Text        string `json:"text"`
 	Link        string `json:"link"`

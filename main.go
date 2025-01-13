@@ -49,11 +49,11 @@ func main() {
 
 	r := gin.Default()
 
-	r.GET("/songs", songHandler.List)
-	r.GET("/songs/:id/text", songHandler.GetText)
-	r.POST("/songs", songHandler.Create)
-	r.PUT("/songs/:id", songHandler.Update)
-	r.DELETE("/songs/:id", songHandler.Delete)
+	r.GET("/api/v1/song", songHandler.List)
+	r.GET("/api/v1//song/:id/text", songHandler.GetText)
+	r.POST("/api/v1/song", songHandler.Create)
+	r.PUT("/api/v1/song/:id", songHandler.Update)
+	r.DELETE("/api/v1/song/:id", songHandler.Delete)
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
