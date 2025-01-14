@@ -4,7 +4,9 @@ import (
 	_ "awesomeProject/docs"
 	"awesomeProject/handlers"
 	"awesomeProject/logger"
+	"awesomeProject/middleware"
 	"awesomeProject/models"
+	"awesomeProject/repositories"
 	"awesomeProject/services"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -44,13 +46,15 @@ func main() {
 
 	db.AutoMigrate(&models.Song{})
 
+	songRepo := repositories.NewSQLSongRepository(db)
 	musicAPI := services.NewMusicAPIService(os.Getenv("EXTERNAL_API_URL"))
-	songHandler := handlers.NewSongHandler(db, musicAPI)
+	songHandler := handlers.NewSongHandler(songRepo, musicAPI)
 
 	r := gin.Default()
+	r.Use(middleware.CORS())
 
 	r.GET("/api/v1/song", songHandler.List)
-	r.GET("/api/v1//song/:id/text", songHandler.GetText)
+	r.GET("/api/v1/song/:id/text", songHandler.GetText)
 	r.POST("/api/v1/song", songHandler.Create)
 	r.PUT("/api/v1/song/:id", songHandler.Update)
 	r.DELETE("/api/v1/song/:id", songHandler.Delete)

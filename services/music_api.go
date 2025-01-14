@@ -10,6 +10,10 @@ import (
 	"net/url"
 )
 
+type MusicAPIServiceInterface interface {
+	GetSongInfo(group, song string) (*models.SongDetail, error)
+}
+
 type MusicAPIService struct {
 	baseURL string
 	client  *http.Client

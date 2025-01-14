@@ -3,21 +3,21 @@ package handlers
 import (
 	"awesomeProject/logger"
 	"awesomeProject/models"
+	"awesomeProject/repositories"
 	"awesomeProject/services"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 	"strconv"
 	"strings"
 )
 
 type SongHandler struct {
-	db       *gorm.DB
-	musicAPI *services.MusicAPIService
+	songRepo repositories.SongRepository
+	musicAPI services.MusicAPIServiceInterface // изменили тип на интерфейс
 }
 
-func NewSongHandler(db *gorm.DB, musicAPI *services.MusicAPIService) *SongHandler {
-	return &SongHandler{db: db, musicAPI: musicAPI}
+func NewSongHandler(repo repositories.SongRepository, api services.MusicAPIServiceInterface) *SongHandler {
+	return &SongHandler{songRepo: repo, musicAPI: api}
 }
 
 // @Summary Get songs list
@@ -33,33 +33,19 @@ func NewSongHandler(db *gorm.DB, musicAPI *services.MusicAPIService) *SongHandle
 // @Success 200 {object} models.Song
 // @Router /songs [get]
 func (h *SongHandler) List(c *gin.Context) {
-	var songs []models.Song
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-	query := h.db.Model(&models.Song{})
-
-	if group := c.Query("group"); group != "" {
-		query = query.Where("\"group\" ILIKE ?", "%"+group+"%")
-	}
-	if song := c.Query("song"); song != "" {
-		query = query.Where("name ILIKE ?", "%"+song+"%")
-	}
-	if releaseDate := c.Query("releaseDate"); releaseDate != "" {
-		query = query.Where("release_date = ?", releaseDate)
-	}
-	if link := c.Query("link"); link != "" {
-		query = query.Where("link ILIKE ?", "%"+link+"%")
+	filters := map[string]string{
+		"group":       c.Query("group"),
+		"song":        c.Query("song"),
+		"releaseDate": c.Query("releaseDate"),
+		"link":        c.Query("link"),
 	}
 
-	var total int64
-	query.Count(&total)
-
-	offset := (page - 1) * limit
-	result := query.Offset(offset).Limit(limit).Find(&songs)
-
-	if result.Error != nil {
-		logger.Info("Failed to fetch songs", zap.Error(result.Error))
+	songs, total, err := h.songRepo.List(page, limit, filters)
+	if err != nil {
+		logger.Info("Failed to fetch songs", zap.Error(err))
 		c.JSON(500, gin.H{"error": "Failed to fetch songs"})
 		return
 	}
@@ -75,19 +61,9 @@ func (h *SongHandler) List(c *gin.Context) {
 	})
 }
 
-// @Summary Get song text
-// @Description Get song text with pagination by verses
-// @Tags songs
-// @Accept json
-// @Produce json
-// @Param id path int true "Song ID"
-// @Param page query int false "Page number"
-// @Param limit query int false "Verses per page"
-// @Success 200 {object} map[string]interface{}
-// @Router /songs/{id}/text [get]
 func (h *SongHandler) GetText(c *gin.Context) {
-	var song models.Song
-	if err := h.db.First(&song, c.Param("id")).Error; err != nil {
+	song, err := h.songRepo.GetByID(c.Param("id"))
+	if err != nil {
 		logger.Info("Song not found", zap.Error(err))
 		c.JSON(404, gin.H{"error": "Song not found"})
 		return
@@ -114,14 +90,6 @@ func (h *SongHandler) GetText(c *gin.Context) {
 	})
 }
 
-// @Summary Create song
-// @Description Create a new song
-// @Tags songs
-// @Accept json
-// @Produce json
-// @Param song body models.CreateSongRequest true "Song info"
-// @Success 201 {object} models.Song
-// @Router /songs [post]
 func (h *SongHandler) Create(c *gin.Context) {
 	var req models.CreateSongRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -145,7 +113,7 @@ func (h *SongHandler) Create(c *gin.Context) {
 		Link:        details.Link,
 	}
 
-	if err := h.db.Create(&song).Error; err != nil {
+	if err := h.songRepo.Create(&song); err != nil {
 		logger.Info("Failed to create song", zap.Error(err))
 		c.JSON(500, gin.H{"error": "Failed to create song"})
 		return
@@ -155,30 +123,21 @@ func (h *SongHandler) Create(c *gin.Context) {
 	c.JSON(201, song)
 }
 
-// @Summary Update song
-// @Description Update an existing song
-// @Tags songs
-// @Accept json
-// @Produce json
-// @Param id path int true "Song ID"
-// @Param song body models.Song true "Updated song info"
-// @Success 200 {object} models.Song
-// @Router /songs/{id} [put]
 func (h *SongHandler) Update(c *gin.Context) {
-	var song models.Song
-	if err := h.db.First(&song, c.Param("id")).Error; err != nil {
+	song, err := h.songRepo.GetByID(c.Param("id"))
+	if err != nil {
 		logger.Info("Song not found", zap.Error(err))
 		c.JSON(404, gin.H{"error": "Song not found"})
 		return
 	}
 
-	if err := c.ShouldBindJSON(&song); err != nil {
+	if err := c.ShouldBindJSON(song); err != nil {
 		logger.Info("Invalid request", zap.Error(err))
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := h.db.Save(&song).Error; err != nil {
+	if err := h.songRepo.Update(song); err != nil {
 		logger.Info("Failed to update song", zap.Error(err))
 		c.JSON(500, gin.H{"error": "Failed to update song"})
 		return
@@ -188,16 +147,8 @@ func (h *SongHandler) Update(c *gin.Context) {
 	c.JSON(200, song)
 }
 
-// @Summary Delete song
-// @Description Delete a song
-// @Tags songs
-// @Accept json
-// @Produce json
-// @Param id path int true "Song ID"
-// @Success 204 "No Content"
-// @Router /songs/{id} [delete]
 func (h *SongHandler) Delete(c *gin.Context) {
-	if err := h.db.Delete(&models.Song{}, c.Param("id")).Error; err != nil {
+	if err := h.songRepo.Delete(c.Param("id")); err != nil {
 		logger.Info("Failed to delete song", zap.Error(err))
 		c.JSON(500, gin.H{"error": "Failed to delete song"})
 		return
